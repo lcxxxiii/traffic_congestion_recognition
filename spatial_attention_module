@@ -1,0 +1,35 @@
+import torch
+from torch import nn
+from torch.nn import init
+from ..builder import NECKS
+
+
+@NECKS.register_module()
+
+
+class SpatialAttention(nn.Module):
+    def __init__(self,kernel_size=7):
+        super().__init__()
+        self.conv=nn.Conv2d(2,1,kernel_size=kernel_size,padding=kernel_size//2)
+        self.sigmoid=nn.Sigmoid()
+        self.gap = nn.AdaptiveAvgPool2d((1, 1))
+    def sa(self, x) :
+        max_result,_=torch.max(x,dim=1,keepdim=True)
+        avg_result=torch.mean(x,dim=1,keepdim=True)
+        result=torch.cat([max_result,avg_result],1)
+        output=self.conv(result)
+        output=self.sigmoid(output)
+        output=output*x
+        output=self.gap(output)
+        return output   
+    def forward(self, inputs):
+        if isinstance(inputs, tuple):
+            outs = tuple([self.sa(x) for x in inputs])
+            outs = tuple(
+                [out.view(x.size(0), -1) for out, x in zip(outs, inputs)])
+        elif isinstance(inputs, torch.Tensor):
+            outs = self.sa(inputs)
+            outs = outs.view(inputs.size(0), -1)
+        else:
+            raise TypeError('neck inputs should be tuple or torch.tensor')
+        return outs
